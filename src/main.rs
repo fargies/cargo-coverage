@@ -48,9 +48,15 @@ fn main() -> io::Result<()> {
         }
     }
 
+    let mut args: std::collections::VecDeque<String> = env::args().skip(1).collect();
+    /* cargo invocation */
+    if args.front().is_some_and(|arg| arg == "cover") {
+        args.pop_front();
+    }
+
     let child = Command::new("cargo")
         .arg("test")
-        .arg(&env::args().collect::<String>())
+        .args(&args)
         .env("CARGO_INCREMENTAL", "0")
         .env("RUSTFLAGS", "-Cinstrument-coverage")
         .env(
@@ -60,7 +66,9 @@ fn main() -> io::Result<()> {
         .spawn()?;
     let _ = child.wait_with_output().expect("failed to wait on child");
 
-    env::set_current_dir(root)?;
+    let lcov_file = format!("{}/output/lcov.info", OUT_PATH);
+    let _ = fs::remove_file(&lcov_file);
+
     let child = Command::new("grcov")
         .arg(".")
         .arg("--binary-path")
@@ -76,7 +84,8 @@ fn main() -> io::Result<()> {
         .arg("--ignore")
         .arg("'/*'")
         .arg("-o")
-        .arg("./output/html/")
+        .arg(format!("{}/output/", OUT_PATH))
+        .current_dir(&current_dir)
         .spawn()?;
     // 🚧 We should check that grcov is installed before we start running shit.
     // I wonder if we can actually just suck it in as a dependency, and run it
@@ -99,12 +108,13 @@ fn main() -> io::Result<()> {
         .arg("--ignore")
         .arg("'/*'")
         .arg("-o")
-        .arg("./output/coverage.lcov")
+        .arg(lcov_file)
+        .current_dir(&current_dir)
         .spawn()?;
     // .expect("failed to execute process");
     let _ = child.wait_with_output()?;
 
-    env::set_current_dir(current_dir)
+    Ok(())
 }
 
 fn find_package_dir(start_dir: &Option<PathBuf>) -> Result<PathBuf, std::io::Error> {
