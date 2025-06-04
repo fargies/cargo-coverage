@@ -79,30 +79,10 @@ fn main() -> io::Result<()> {
         "--branch",
         "--ignore-not-existing",
         "--ignore",
-        "'../*'",
+        "../*",
         "--ignore",
-        "'/*'",
+        "/*",
     ];
-
-    let child = Command::new("grcov")
-        .args(args)
-        .arg("-t")
-        .arg("html")
-        .arg("-o")
-        .arg(format!("{}/output/", OUT_PATH))
-        .current_dir(&current_dir)
-        .spawn()?;
-    let _ = child.wait_with_output()?;
-
-    let child = Command::new("grcov")
-        .args(args)
-        .arg("-t")
-        .arg("lcov")
-        .arg("-o")
-        .arg(lcov_file)
-        .current_dir(&current_dir)
-        .spawn()?;
-    let _ = child.wait_with_output()?;
 
     let mut child = Command::new("grcov")
         .args(args)
@@ -128,8 +108,30 @@ fn main() -> io::Result<()> {
             lock.write_all(line.as_bytes())?;
             lock.write_all(b"\n")?;
         }
-        let _ = child.wait()?;
     }
+    let _ = child.wait_with_output()?;
+
+    let child = Command::new("grcov")
+        .args(args)
+        .arg("-t")
+        .arg("html")
+        .arg("-o")
+        .arg(format!("{}/output/", OUT_PATH))
+        .current_dir(&current_dir)
+        .spawn()?;
+    let _ = child.wait_with_output()?;
+
+    /* finish with lcov since its report would be parsed by grcov */
+    let child = Command::new("grcov")
+        .args(args)
+        .arg("-t")
+        .arg("lcov")
+        .arg("-o")
+        .arg(lcov_file)
+        .current_dir(&current_dir)
+        .spawn()?;
+    let _ = child.wait_with_output()?;
+
     Ok(())
 }
 
