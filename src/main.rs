@@ -1,13 +1,15 @@
 use std::{
     env,
     ffi::OsString,
-    fs, io,
+    fs,
+    io::{self, BufRead, Write},
     os::unix::prelude::OsStringExt,
     path::PathBuf,
-    process::{self, Command},
+    process::{self, Command, Stdio},
 };
 
 use ansi_term::Colour;
+use regex::{Captures, Regex};
 
 const OUT_PATH: &str = "target/coverage";
 const DEPS_PATH: &str = "target/debug/deps/";
@@ -68,52 +70,66 @@ fn main() -> io::Result<()> {
 
     let lcov_file = format!("{}/output/lcov.info", OUT_PATH);
     let _ = fs::remove_file(&lcov_file);
+    let args = [
+        ".",
+        "--binary-path",
+        deps.to_str().unwrap_or_default(),
+        "-s",
+        ".",
+        "--branch",
+        "--ignore-not-existing",
+        "--ignore",
+        "'../*'",
+        "--ignore",
+        "'/*'",
+    ];
 
     let child = Command::new("grcov")
-        .arg(".")
-        .arg("--binary-path")
-        .arg(&deps)
-        .arg("-s")
-        .arg(".")
+        .args(args)
         .arg("-t")
         .arg("html")
-        .arg("--branch")
-        .arg("--ignore-not-existing")
-        .arg("--ignore")
-        .arg("'../*'")
-        .arg("--ignore")
-        .arg("'/*'")
         .arg("-o")
         .arg(format!("{}/output/", OUT_PATH))
         .current_dir(&current_dir)
         .spawn()?;
-    // 🚧 We should check that grcov is installed before we start running shit.
-    // I wonder if we can actually just suck it in as a dependency, and run it
-    // without spawning a shell?
-    // .expect("failed to execute process");
     let _ = child.wait_with_output()?;
 
     let child = Command::new("grcov")
-        .arg(".")
-        .arg("--binary-path")
-        .arg(deps)
-        .arg("-s")
-        .arg(".")
+        .args(args)
         .arg("-t")
         .arg("lcov")
-        .arg("--branch")
-        .arg("--ignore-not-existing")
-        .arg("--ignore")
-        .arg("'../*'")
-        .arg("--ignore")
-        .arg("'/*'")
         .arg("-o")
         .arg(lcov_file)
         .current_dir(&current_dir)
         .spawn()?;
-    // .expect("failed to execute process");
     let _ = child.wait_with_output()?;
 
+    let mut child = Command::new("grcov")
+        .args(args)
+        .arg("-t")
+        .arg("markdown")
+        .stdout(Stdio::piped())
+        .current_dir(&current_dir)
+        .spawn()?;
+    let out = child.stdout.take().expect("failed to parse grcov output");
+    {
+        let pct_regex = Regex::new(r"(\d+(:?\.\d+)?)%").unwrap();
+        let mut lock = io::stdout().lock();
+        for line in std::io::BufReader::new(out).lines().map_while(Result::ok) {
+            let line = pct_regex.replace_all(&line, |cap: &Captures| {
+                let num_str = &cap[1];
+                match num_str.parse::<f32>() {
+                    Ok(num) if num > 90f32 => Colour::Green.bold().paint(&cap[0]).to_string(),
+                    Ok(num) if num > 75f32 => Colour::Yellow.bold().paint(&cap[0]).to_string(),
+                    Ok(_) => Colour::Red.bold().paint(&cap[0]).to_string(),
+                    _ => cap[0].to_string(),
+                }
+            });
+            lock.write_all(line.as_bytes())?;
+            lock.write_all(b"\n")?;
+        }
+        let _ = child.wait()?;
+    }
     Ok(())
 }
 
