@@ -82,6 +82,8 @@ fn main() -> io::Result<()> {
         "../*",
         "--ignore",
         "/*",
+        "--excl-start", "^mod test",
+        "--excl-stop", "^}"
     ];
 
     let mut child = Command::new("grcov")
