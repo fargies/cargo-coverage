@@ -4,24 +4,23 @@ use std::{
     fs,
     io::{self, BufRead, Write},
     os::unix::prelude::OsStringExt,
-    path::PathBuf,
+    path::{self, PathBuf},
     process::{self, Command, Stdio},
 };
 
 use ansi_term::Colour;
 use regex::{Captures, Regex};
 
-const OUT_PATH: &str = "target/coverage";
-const DEPS_PATH: &str = "target/debug/deps/";
-
 // 🚧 I should return something, and at least allow for returning errors of some
 // of my subprocesses and function calls and whatnot.
 fn main() -> io::Result<()> {
+    let out_path: PathBuf = ["target", "coverage"].iter().collect();
+    let deps_path: PathBuf = ["target", "debug", "deps"].iter().collect();
     let current_dir = env::current_dir().unwrap();
-    let mut root = find_package_dir(&None).unwrap();
-    let mut deps = root.clone();
-    deps.push(DEPS_PATH);
-    root.push(OUT_PATH);
+    let (root, deps) = {
+        let pkg_dir = find_package_dir(&None).unwrap();
+        (pkg_dir.join(&out_path), pkg_dir.join(&deps_path))
+    };
 
     match Command::new("grcov").arg("-h").output() {
         Ok(_) => {}
@@ -61,14 +60,15 @@ fn main() -> io::Result<()> {
         .args(&args)
         .env("CARGO_INCREMENTAL", "0")
         .env("RUSTFLAGS", "-Cinstrument-coverage")
+        .env("RUSTDOCFLAGS", "-Cinstrument-coverage")
         .env(
             "LLVM_PROFILE_FILE",
-            format!("{}/cargo-test-%p-%m.profraw", OUT_PATH),
+            out_path.join("cargo-test-%p-%m.profraw").to_str().unwrap(),
         )
         .spawn()?;
     let _ = child.wait_with_output().expect("failed to wait on child");
 
-    let lcov_file = format!("{}/output/lcov.info", OUT_PATH);
+    let lcov_file = out_path.join(["output", "lcov.info"].into_iter().collect::<PathBuf>());
     let _ = fs::remove_file(&lcov_file);
     let args = [
         ".",
@@ -82,10 +82,16 @@ fn main() -> io::Result<()> {
         "../*",
         "--ignore",
         "/*",
-        "--excl-start", "^mod test",
-        "--excl-stop", "^}"
+        "--excl-start",
+        "^mod test",
+        "--excl-stop",
+        "^}",
     ];
 
+    eprintln!(
+        "{} markdown coverage report",
+        Colour::Green.bold().paint(format!("{:>12}", "Generating"))
+    );
     let mut child = Command::new("grcov")
         .args(args)
         .arg("-t")
@@ -113,16 +119,29 @@ fn main() -> io::Result<()> {
     }
     let _ = child.wait_with_output()?;
 
+    let html_out_dir = out_path.join("output");
+    let html_out_dir = path::absolute(&html_out_dir).unwrap_or(html_out_dir);
+    eprintln!(
+        "{} html coverage report ({})",
+        Colour::Green.bold().paint(format!("{:>12}", "Generating")),
+        html_out_dir.join(["html", "index.html"].into_iter().collect::<PathBuf>()).to_str().unwrap()
+    );
+    fs::create_dir_all(&html_out_dir)?;
     let child = Command::new("grcov")
         .args(args)
         .arg("-t")
         .arg("html")
         .arg("-o")
-        .arg(format!("{}/output/", OUT_PATH))
+        .arg(html_out_dir)
         .current_dir(&current_dir)
         .spawn()?;
     let _ = child.wait_with_output()?;
 
+    eprintln!(
+        "{} lcov coverage report ({})",
+        Colour::Green.bold().paint(format!("{:>12}", "Generating")),
+        lcov_file.to_str().unwrap()
+    );
     /* finish with lcov since its report would be parsed by grcov */
     let child = Command::new("grcov")
         .args(args)
