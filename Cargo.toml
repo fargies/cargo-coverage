@@ -1,15 +1,15 @@
 [package]
 name = "cargo-coverage"
 version = "0.1.1"
-authors = ["Keith T. Star <uberfoo@me.com>"]
+authors = ["Keith T. Star <uberfoo@me.com>", "Sylvain Fargier <fargier.sylvain@gmail.com>"]
 categories = ["command-line-utilities", "development-tools::cargo-plugins"]
 description = "A Cargo plugin for generating code coverage data."
-documentation = "https://github.com/uberfoo/cargo-coverage"
-homepage = "https://github.com/uberfoo/cargo-coverage"
+documentation = "https://github.com/fargies/cargo-coverage"
+homepage = "https://github.com/fargies/cargo-coverage"
 include = ["src/**/*.rs", "README.md", "LICENSE-APACHE", "LICENSE-MIT"]
 keywords = ["code-coverage", "cargo", "rust"]
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/uberfoo/cargo-coverage"
+repository = "https://github.com/fargies/cargo-coverage"
 edition = "2021"
 
 [[bin]]

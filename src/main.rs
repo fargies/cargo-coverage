@@ -55,18 +55,24 @@ fn main() -> io::Result<()> {
         args.pop_front();
     }
 
-    let child = Command::new("cargo")
+    if !Command::new("cargo")
         .arg("test")
         .args(&args)
-        .env("CARGO_INCREMENTAL", "0")
-        .env("RUSTFLAGS", "-Cinstrument-coverage")
-        .env("RUSTDOCFLAGS", "-Cinstrument-coverage")
-        .env(
-            "LLVM_PROFILE_FILE",
-            out_path.join("cargo-test-%p-%m.profraw").to_str().unwrap(),
-        )
-        .spawn()?;
-    let _ = child.wait_with_output().expect("failed to wait on child");
+        .envs([
+            ("CARGO_INCREMENTAL", "0"),
+            ("RUSTFLAGS", "-Cinstrument-coverage"),
+            ("RUSTDOCFLAGS", "-Cinstrument-coverage"),
+            (
+                "LLVM_PROFILE_FILE",
+                out_path.join("cargo-test-%p-%m.profraw").to_str().unwrap(),
+            ),
+        ])
+        .status()?
+        .success()
+    {
+        // may not be an issue if some tests are failing
+        eprintln!("cargo test failed");
+    }
 
     let lcov_file = out_path.join(["output", "lcov.info"].into_iter().collect::<PathBuf>());
     let _ = fs::remove_file(&lcov_file);
@@ -124,7 +130,10 @@ fn main() -> io::Result<()> {
     eprintln!(
         "{} html coverage report ({})",
         Colour::Green.bold().paint(format!("{:>12}", "Generating")),
-        html_out_dir.join(["html", "index.html"].into_iter().collect::<PathBuf>()).to_str().unwrap()
+        html_out_dir
+            .join(["html", "index.html"].into_iter().collect::<PathBuf>())
+            .to_str()
+            .unwrap()
     );
     fs::create_dir_all(&html_out_dir)?;
     let child = Command::new("grcov")
@@ -168,18 +177,6 @@ fn find_package_dir(start_dir: &Option<PathBuf>) -> Result<PathBuf, std::io::Err
         .arg("--message-format")
         .arg("plain")
         .output()?;
-    // .context(
-    //     "😱 Tried running `cargo locate-project to no avail. \
-    //         Maybe you need to add cargo to you path?",
-    // )?;
-
-    // anyhow::ensure!(
-    //     output.status.success(),
-    //     format!(
-    //         "😱 Unable to find package in directory: {:?}.",
-    //         std::env::current_dir()?
-    //     )
-    // );
 
     let mut stdout = output.stdout;
 
