@@ -19,3 +19,6 @@ path = "src/main.rs"
 [dependencies]
 ansi_term = "0.12.1"
 regex = "1.11.1"
+
+[package.metadata.release]
+pre-release-hook = ["git", "cliff", "-o", "ChangeLog.md", "--tag", "{{version}}" ]
