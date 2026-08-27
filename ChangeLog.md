@@ -29,4 +29,5 @@
 
 - Minor changes
 - Add cliff support
+- Initial changelog
 

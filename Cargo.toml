@@ -1,6 +1,6 @@
 [package]
 name = "cargo-coverage"
-version = "0.1.1"
+version = "1.0.0"
 authors = ["Keith T. Star <uberfoo@me.com>", "Sylvain Fargier <fargier.sylvain@gmail.com>"]
 categories = ["command-line-utilities", "development-tools::cargo-plugins"]
 description = "A Cargo plugin for generating code coverage data."
