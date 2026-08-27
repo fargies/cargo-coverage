@@ -10,7 +10,7 @@ include = ["src/**/*.rs", "README.md", "LICENSE-APACHE", "LICENSE-MIT"]
 keywords = ["code-coverage", "cargo", "rust"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/fargies/cargo-coverage"
-edition = "2021"
+edition = "2024"
 
 [[bin]]
 name = "cargo-cover"

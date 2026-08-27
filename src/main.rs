@@ -1,9 +1,9 @@
 use std::{
     env,
-    ffi::OsString,
+    ffi::OsStr,
     fs,
-    io::{self, BufRead, Write},
-    os::unix::prelude::OsStringExt,
+    io::{self, BufRead, Error, Write},
+    os::unix::ffi::OsStrExt,
     path::{self, PathBuf},
     process::{self, Command, Stdio},
 };
@@ -14,13 +14,11 @@ use regex::{Captures, Regex};
 // 🚧 I should return something, and at least allow for returning errors of some
 // of my subprocesses and function calls and whatnot.
 fn main() -> io::Result<()> {
-    let out_path: PathBuf = ["target", "coverage"].iter().collect();
-    let deps_path: PathBuf = ["target", "debug", "deps"].iter().collect();
+    let workspace_dir = find_package_dir()?;
+    let target_dir = workspace_dir.join("target");
+    let coverage_dir = target_dir.join(PathBuf::from("coverage"));
+    let deps = target_dir.join(PathBuf::from_iter(["debug", "deps"]));
     let current_dir = env::current_dir().unwrap();
-    let (root, deps) = {
-        let pkg_dir = find_package_dir(&None).unwrap();
-        (pkg_dir.join(&out_path), pkg_dir.join(&deps_path))
-    };
 
     match Command::new("grcov").arg("-h").output() {
         Ok(_) => {}
@@ -37,14 +35,14 @@ fn main() -> io::Result<()> {
     };
 
     // Remove all existing profraw files
-    if root.exists() {
-        for entry in fs::read_dir(&root)? {
+    if coverage_dir.exists() {
+        for entry in fs::read_dir(&coverage_dir)? {
             let entry = entry?;
             let path = entry.path();
-            if let Some(extension) = path.extension() {
-                if extension == "profraw" {
-                    fs::remove_file(&path)?;
-                }
+            if let Some(extension) = path.extension()
+                && extension == "profraw"
+            {
+                fs::remove_file(&path)?;
             }
         }
     }
@@ -59,12 +57,16 @@ fn main() -> io::Result<()> {
         .arg("test")
         .args(&args)
         .envs([
+            ("CARGO_COVER", "1"),
             ("CARGO_INCREMENTAL", "0"),
             ("RUSTFLAGS", "-Cinstrument-coverage"),
             ("RUSTDOCFLAGS", "-Cinstrument-coverage"),
             (
                 "LLVM_PROFILE_FILE",
-                out_path.join("cargo-test-%p-%m.profraw").to_str().unwrap(),
+                coverage_dir
+                    .join("cargo-test-%p-%m.profraw")
+                    .to_str()
+                    .unwrap(),
             ),
         ])
         .status()?
@@ -74,36 +76,47 @@ fn main() -> io::Result<()> {
         eprintln!("cargo test failed");
     }
 
-    let lcov_file = out_path.join(["output", "lcov.info"].into_iter().collect::<PathBuf>());
+    let lcov_file = coverage_dir.join(["output", "lcov.info"].into_iter().collect::<PathBuf>());
     let _ = fs::remove_file(&lcov_file);
-    let args = [
+    let mut args = vec![
         ".",
         "--binary-path",
         deps.to_str().unwrap_or_default(),
         "-s",
         ".",
+        "--prefix-dir",
+        workspace_dir.to_str().unwrap_or_default(),
         "--branch",
         "--ignore-not-existing",
         "--ignore",
         "../*",
         "--ignore",
         "/*",
+        "--ignore",
+        "**/tests/*",
         "--excl-start",
         "^mod test",
         "--excl-stop",
         "^}",
     ];
+    let keep_path = match current_dir.strip_prefix(&workspace_dir) {
+        Ok(path) if !path.is_empty() => format!("{}/*", path.to_str().unwrap_or_default()),
+        _ => String::default(),
+    };
+    if !keep_path.is_empty() {
+        args.extend(["--keep-only", keep_path.as_str()]);
+    }
 
     eprintln!(
         "{} markdown coverage report",
         Colour::Green.bold().paint(format!("{:>12}", "Generating"))
     );
     let mut child = Command::new("grcov")
-        .args(args)
+        .args(&args)
         .arg("-t")
         .arg("markdown")
         .stdout(Stdio::piped())
-        .current_dir(&current_dir)
+        .current_dir(&workspace_dir)
         .spawn()?;
     let out = child.stdout.take().expect("failed to parse grcov output");
     {
@@ -125,7 +138,7 @@ fn main() -> io::Result<()> {
     }
     let _ = child.wait_with_output()?;
 
-    let html_out_dir = out_path.join("output");
+    let html_out_dir = coverage_dir.join("output");
     let html_out_dir = path::absolute(&html_out_dir).unwrap_or(html_out_dir);
     eprintln!(
         "{} html coverage report ({})",
@@ -137,12 +150,12 @@ fn main() -> io::Result<()> {
     );
     fs::create_dir_all(&html_out_dir)?;
     let child = Command::new("grcov")
-        .args(args)
+        .args(&args)
         .arg("-t")
         .arg("html")
         .arg("-o")
         .arg(html_out_dir)
-        .current_dir(&current_dir)
+        .current_dir(&workspace_dir)
         .spawn()?;
     let _ = child.wait_with_output()?;
 
@@ -153,37 +166,27 @@ fn main() -> io::Result<()> {
     );
     /* finish with lcov since its report would be parsed by grcov */
     let child = Command::new("grcov")
-        .args(args)
+        .args(&args)
         .arg("-t")
         .arg("lcov")
         .arg("-o")
         .arg(lcov_file)
-        .current_dir(&current_dir)
+        .current_dir(&workspace_dir)
         .spawn()?;
     let _ = child.wait_with_output()?;
 
     Ok(())
 }
 
-fn find_package_dir(start_dir: &Option<PathBuf>) -> Result<PathBuf, std::io::Error> {
-    if let Some(dir) = start_dir {
-        std::env::set_current_dir(dir)?;
-    }
-
+fn find_package_dir() -> Result<PathBuf, Error> {
     // Figure out where Cargo.toml is located.
     //
     let output = process::Command::new("cargo")
-        .arg("locate-project")
-        .arg("--message-format")
-        .arg("plain")
+        .args(["locate-project", "--message-format", "plain", "--workspace"])
         .output()?;
 
-    let mut stdout = output.stdout;
-
-    // I don't know if it's kosher, but this does nicely to get rid of
-    // that newline character.
-    stdout.pop();
-    let os_string = OsString::from_vec(stdout);
+    let stdout = output.stdout.trim_ascii();
+    let os_string = OsStr::from_bytes(stdout);
     let mut package_root = PathBuf::from(os_string);
     // Get rid of Cargo.toml
     package_root.pop();
