@@ -17,7 +17,14 @@ fn main() -> io::Result<()> {
     let workspace_dir = find_package_dir()?;
     let target_dir = workspace_dir.join("target");
     let coverage_dir = target_dir.join(PathBuf::from("coverage"));
-    let deps = target_dir.join(PathBuf::from_iter(["debug", "deps"]));
+    let deps = if let path = target_dir.join(PathBuf::from_iter(["debug", "deps"]))
+        && path.exists()
+    {
+        path
+    } else {
+        /* cargo >= 1.100.0 doesn't have "deps" dir anymore */
+        target_dir.join(PathBuf::from_iter(["debug", "build"]))
+    };
     let current_dir = env::current_dir().unwrap();
 
     match Command::new("grcov").arg("-h").output() {
