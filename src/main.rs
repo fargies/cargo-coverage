@@ -125,8 +125,6 @@ fn parse_args<'a>(raw: &'a clap_lex::RawArgs, grcov: &RevParsedArgs) -> Args<'a>
     ret
 }
 
-// 🚧 I should return something, and at least allow for returning errors of some
-// of my subprocesses and function calls and whatnot.
 fn main() -> io::Result<()> {
     let workspace_dir = find_package_dir()?;
     let target_dir = workspace_dir.join("target");
@@ -154,8 +152,11 @@ fn main() -> io::Result<()> {
         }
     };
 
+    let raw_args = clap_lex::RawArgs::from_args();
+    let args = parse_args(&raw_args, &grcov_args);
+
     // Remove all existing profraw files
-    if coverage_dir.exists() {
+    if coverage_dir.exists() && env::var_os("CARGO_COVER_NOCLEAN").is_none_or(|v| v.is_empty()) {
         for entry in fs::read_dir(&coverage_dir)? {
             let entry = entry?;
             let path = entry.path();
@@ -166,9 +167,6 @@ fn main() -> io::Result<()> {
             }
         }
     }
-
-    let raw_args = clap_lex::RawArgs::from_args();
-    let args = parse_args(&raw_args, &grcov_args);
 
     if !Command::new("cargo")
         .arg("test")

@@ -32,9 +32,15 @@ mod tests {
     fn run(cmd: &mut Command) -> Result<()> {
         /* execute the test twice, once through `cargo test` then with `COVER_BIN` */
         match std::env::var("RUN_CLI").ok() {
-            None => assert!(cmd.env("RUN_CLI", "1").status()?.success()),
+            None => assert!(
+                cmd.env("RUN_CLI", "1")
+                    .env("CARGO_COVER_NOCLEAN", "1")
+                    .status()?
+                    .success()
+            ),
             Some(value) if value == "1" => assert!(
                 cmd.env("RUN_CLI", "2")
+                    .env("CARGO_COVER_NOCLEAN", "1")
                     .arg("-q")
                     .stdout(Stdio::null())
                     .status()?
@@ -47,13 +53,14 @@ mod tests {
 
     #[test]
     fn run_cli() -> Result<()> {
-        run(&mut Command::new(COVER_BIN))?;
-
         /* test with args */
         run(Command::new(COVER_BIN).args(["--grcov-ignore", "src/*", "--bins"]))?;
 
         /* test help */
         run(Command::new(COVER_BIN).args(["--help"]))?;
+
+        /* do this last to generate proper reports */
+        run(&mut Command::new(COVER_BIN))?;
 
         Ok(())
     }
