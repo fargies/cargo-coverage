@@ -1,0 +1,65 @@
+name: test
+
+on: [workflow_dispatch, push]
+
+env:
+  CARGO_TERM_COLOR: never
+  RUST_LOG_STYLE: never
+  RUST_LOG: trace
+
+concurrency:
+  # cancel branch jobs on new pushs
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.run_id || github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-ubuntu-default:
+    name: test | default
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch sources
+        uses: actions/checkout@v5
+      - name: Check Rust environment
+        id: rust-check
+        shell: bash
+        run: |
+          if command -v cargo >/dev/null 2>&1 &&
+              command -v rustup >/dev/null 2>&1 &&
+              rustup component list --installed | grep -q '^clippy-' &&
+              rustup component list --installed | grep -q '^llvm-tools'; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+            echo "Rust and required components are already installed."
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "Rust installation or components are missing."
+          fi
+      - name: Install Rust
+        if: steps.rust-check.outputs.ready != 'true'
+        uses: actions-rust-lang/setup-rust-toolchain@v2
+        with:
+          components: llvm-tools clippy
+      - name: Install grcov
+        run: cargo install grcov
+      - name: Build project
+        run: cargo build
+      - name: Run tests
+        run: cargo test
+      - name: Run clippy
+        run: cargo clippy -- -D warnings
+
+  changelog:
+    name: test | changelog
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-tags: true
+          fetch-depth: 0
+      - name: Generate ChangeLog
+        uses: docker://alpine:latest
+        env:
+          RUST_LOG: warn
+        with:
+          args: |
+            /bin/sh -c "printf '[safe]\ndirectory = *\n' > /etc/gitconfig && apk add git-cliff && git-cliff -u && echo Ok"
