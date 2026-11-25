@@ -19,22 +19,7 @@ jobs:
     steps:
       - name: Fetch sources
         uses: actions/checkout@v5
-      - name: Check Rust environment
-        id: rust-check
-        shell: bash
-        run: |
-          if command -v cargo >/dev/null 2>&1 &&
-              command -v rustup >/dev/null 2>&1 &&
-              rustup component list --installed | grep -q '^clippy-' &&
-              rustup component list --installed | grep -q '^llvm-tools'; then
-            echo "ready=true" >> "$GITHUB_OUTPUT"
-            echo "Rust and required components are already installed."
-          else
-            echo "ready=false" >> "$GITHUB_OUTPUT"
-            echo "Rust installation or components are missing."
-          fi
       - name: Install Rust
-        if: steps.rust-check.outputs.ready != 'true'
         uses: actions-rust-lang/setup-rust-toolchain@v2
         with:
           components: llvm-tools clippy
