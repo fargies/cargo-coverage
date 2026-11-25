@@ -47,11 +47,14 @@ mod tests {
 
     #[test]
     fn run_cli() -> Result<()> {
-        run(&mut Command::new(COVER_BIN))
-    }
+        run(&mut Command::new(COVER_BIN))?;
 
-    #[test]
-    fn with_args() -> Result<()> {
-        run(Command::new(COVER_BIN).args(["--grcov-ignore", "src/*", "--bins"]))
+        /* test with args */
+        run(Command::new(COVER_BIN).args(["--grcov-ignore", "src/*", "--bins"]))?;
+
+        /* test help */
+        run(Command::new(COVER_BIN).args(["--help"]))?;
+
+        Ok(())
     }
 }
