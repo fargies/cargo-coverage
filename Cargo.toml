@@ -16,7 +16,8 @@ name = "cargo-cover"
 path = "src/main.rs"
 
 [dependencies]
-ansi_term = "0.12.1"
+clap_lex = "1.1.2"
+colored = "3.1.1"
 regex = "1.13.2"
 
 [package.metadata.release]
